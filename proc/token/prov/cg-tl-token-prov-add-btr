@@ -1,0 +1,102 @@
+{
+  $cont = 1;
+
+  our @Param = our $T1 = qw(Par_Token_Hash);
+  our ($P1) = paramAlias @Param;
+
+  '';
+}
+
+create or replace procedure CgTlTokenProv_Add_btr (
+  p_Db        tinyint,
+  p_ProvHash  bigint unsigned,
+  p_Dtm       datetime(3),
+  $Pid        bigint
+)
+begin
+
+{Boilerplate}
+
+{valParam @Param}
+
+-- Execute
+
+set transaction isolation level Serializable;
+
+start transaction;
+
+set @Dtm = now(3);
+
+{
+my $f = sub {
+our $Db = shift;
+view q{
+set @HasDtmTravelling = exists (
+  select 1
+  from {$P1}
+     , {$Db}.TokenProv Tp
+     , {$Db}.CgTlProv Cp
+  where P1.$Id = $Pid
+    and Tp.Newest = 1
+    and Tp.TokenHash = P1.Hash
+    and Cp.ProvHash = Tp.ProvHash
+    and Cp.Dtm > p_Dtm
+  )
+;
+
+{RaiseOnErr 'Select', "$Db HasDtmTravelling"}
+
+if p_Dtm <> UnixTs_zero() and @HasDtmTravelling
+then
+  {Warn "$Db has Dtm travelling"}
+end if;
+
+insert into {$Db}.TokenProv (TokenHash, ProvHash, Newest)
+select
+    Hash
+  , p_ProvHash
+  , not @HasDtmTravelling
+    or not exists (
+      select 1
+      from {$Db}.TokenProv Tp
+         , {$Db}.CgTlProv Cp
+      where Tp.Newest = 1
+        and Tp.TokenHash = P1.Hash
+        and Cp.ProvHash = Tp.ProvHash
+        and Cp.Dtm > p_Dtm
+      )
+from {$P1}
+where P1.$Id = $Pid
+;
+
+{RaiseOnErr 'Insert', "$Db.TokenProv"}
+
+update {$Db}.TokenProv Tp
+set Newest = 0
+where Newest = 1
+  and exists (
+    select 1
+    from {$P1}
+       , {$Db}.CgTlProv Cp
+    where P1.$Id = $Pid
+      and Tp.TokenHash = P1.Hash
+      and Cp.ProvHash = Tp.ProvHash
+      and (
+           Cp.Dtm = UnixTs_zero()
+        or Cp.Dtm < p_Dtm
+      )
+  )
+;
+
+{RaiseOnErr 'Update', "$Db.TokenProv"}
+}};
+
+if_p_Db ('BB', $f) . "\n\n" . if_p_Db ('BBR', $f);
+
+}
+
+{$Closing}
+
+{cleanupParam @Param}
+
+{$End_}

@@ -1,0 +1,79 @@
+insert into BB.Token (
+    Hash
+  , $ChainDes
+  , $ChainId
+  , Decimals
+  , Dtm
+  , UpdatedDtm
+  )
+select
+    P1.Hash
+  , P1.$ChainDes
+  , P1.$ChainId
+  , P1.Decimals
+  , @Dtm
+  , @Dtm
+from {$P1}
+where P1.$Id = $Pid
+  and not P1.Bbr
+;
+
+{RaiseOnErr qw(Insert BB.Token)}
+
+insert into BB.Addr (
+    Hash
+  , Des
+  , Addr
+  , Dtm
+)
+select
+    md5_u64(Addr)
+  , 'Token'
+  , Addr
+  , @Dtm
+from {$P1}
+where P1.$Id = $Pid
+  and not P1.Bbr
+;
+
+{RaiseOnErr qw(Insert BB.Addr)}
+
+insert into BB.TokenAddr (TokenHash, AddrHash)
+select
+    P1.Hash
+  , md5_u64(P1.Addr)
+from {$P1}
+where P1.$Id = $Pid
+  and not P1.Bbr
+;
+
+{RaiseOnErr qw(Insert BB.TokenAddr)}
+
+insert into BB.Var_Token (Hash, Sym, Name)
+select
+    P1.Hash
+  , P1.Sym
+  , P1.Name
+from {$P1}
+where P1.$Id = $Pid
+  and not P1.Bbr
+  and (P1.Sym <> '' or P1.Name <> '')
+;
+
+{RaiseOnErr qw(Insert BB.Var_Token)}
+
+insert into BB.Var_Token_O (Hash, Sym, Name)
+select
+    P1.Hash
+  , P2.Sym
+  , P2.Name
+from {$P1}
+   , {$P2}
+where P1.$Id = $Pid
+  and not P1.Bbr
+  and P2.$Id = $Pid
+  and P1.Hash = P2.Hash
+  and (P2.Sym <> '' or P2.Name <> '')
+;
+
+{RaiseOnErr qw(Insert BB.Var_Token_O)}

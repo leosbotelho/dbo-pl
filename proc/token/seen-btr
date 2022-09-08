@@ -1,0 +1,63 @@
+{
+  $cont = 1;
+
+  our @Param = our $T1 = qw(Par_Token_Hash);
+  our ($P1) = paramAlias @Param;
+  '';
+}
+
+{paramSz '32m'}
+
+create or replace table {$T1} (
+  $Id        bigint not null,
+  Hash       bigint unsigned not null,
+
+  Primary Key ($Id, Hash) using BTree
+)
+Engine=Memory
+;
+
+create or replace procedure Token_Seen_btr (
+  p_Db  tinyint,
+  $Pid  bigint
+)
+begin
+
+{Boilerplate}
+
+{valParam @Param}
+
+-- Execute
+
+set transaction isolation level Serializable;
+
+start transaction;
+
+set @Dtm = now(3);
+
+{
+my $f = sub {
+our $Db = shift;
+view q{
+update {$Db}.Token T
+set UpdatedDtm = @Dtm
+where exists (
+  select 1
+  from {$P1}
+  where P1.$Id = $Pid
+    and T.Hash = P1.Hash
+  )
+;
+
+{RaiseOnErr 'Update', "$Db.Token"}
+}};
+
+if_p_Db ('BB', $f) . "\n\n" . if_p_Db ('BBR', $f);
+
+}
+
+{$Closing}
+
+{cleanupParam @Param}
+
+{$End_}

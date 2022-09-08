@@ -1,0 +1,34 @@
+insert into Token (
+    Hash
+  , $ChainDes
+  , $ChainId
+  , ChainId
+  , Sym
+  , Name
+  , Decimals
+  , Addr
+  , Addr_O
+  , Dtm
+  , UpdatedDtm
+  )
+select
+    P1.Hash
+  , P1.$ChainDes
+  , P1.$ChainId
+  , P1.ChainId
+  , case when P1.Sym = '' then P2.Sym else P1.Sym end
+  , case when P1.Name = '' then P2.Name else P1.Name end
+  , P1.Decimals
+  , P1.Addr
+  , P2.Addr
+  , @Dtm
+  , @Dtm
+from {$P1}
+   , {$P2}
+where P1.$Id = $Pid
+  and P1.Bbr
+  and P2.$Id = $Pid
+  and P1.Hash = P2.Hash
+;
+
+{RaiseOnErr qw(Insert BBR.Token)}

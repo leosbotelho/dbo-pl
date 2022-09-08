@@ -1,0 +1,85 @@
+-- Boilerplate
+{
+  sub getAllDiagnostics {
+    my $i0 = shift;
+    my $i = $i0 + 1;
+    q{get diagnostics @errCount = number;
+      if @errCount >= } . $i0 . q{ then
+        get diagnostics condition } . $i0 . q{
+          @sqlState = returned_sqlstate, @sqlCode = mysql_errno, @msgTxt_ = message_text;
+        set @msgTxt = concat(@sqlState, ' ', @sqlCode, ' ', @msgTxt_);
+        set sqlStates = case when sqlStates = ''
+          then @sqlState else concat(sqlStates, ', ', @sqlState) end;
+        set sqlCodes = case when sqlCodes = ''
+          then @sqlCode else concat(sqlCodes, ', ', @sqlCode) end;
+        set msgTxts = case when msgTxts = ''
+          then @msgTxt else concat(msgTxts, '\n', @msgTxt) end;
+        set @i = } . $i. q{;
+        while @i <= @errCount do
+          get diagnostics condition @i
+            @sqlState = returned_sqlstate, @sqlCode = mysql_errno, @msgTxt_ = message_text;
+          set @msgTxt = concat(@sqlState, ' ', @sqlCode, ' ', @msgTxt_);
+          set sqlStates = concat(sqlStates, ', ', @sqlState);
+          set sqlCodes = concat(sqlCodes, ', ', @sqlCode);
+          set msgTxts = concat(msgTxts, '\n', @msgTxt);
+          set @i = @i + 1;
+        end while;
+      end if;};
+  }
+  '';
+}
+declare err boolean default false;
+declare cont boolean default false;
+declare gobble boolean default false;
+declare sqlStates varchar(512) default '';
+declare sqlCodes varchar(512) default '';
+declare msgTxts varchar(512) default '';
+declare lastSqlCode smallint default 0;
+declare lastMsgTxt varchar(512) default '';
+
+declare continue handler for SQLWarning
+begin
+  if not gobble then
+    get diagnostics @errCount = number;
+    set @i = 1;
+    while @i <= @errCount do
+      get diagnostics condition @i
+        @sqlState = returned_sqlstate, @sqlCode = mysql_errno, @msgTxt = message_text;
+      set @errstr = concat('{$ProcName} ', @sqlState, ' ', @sqlCode, ' ', @msgTxt);
+      select @sqlState as `SqlState`, @sqlCode as `SqlCode`, @errstr as Warn;
+      set @i = @i + 1;
+    end while;
+  end if;
+end;
+
+declare continue handler for SQLException, 1265
+begin
+  set err = true;
+  if not gobble then
+    if cont then
+      {getAllDiagnostics 1}
+    else
+      get diagnostics condition 1
+        @sqlState_ = returned_sqlstate, @sqlCode_ = mysql_errno, @msgTxt = message_text;
+      {getAllDiagnostics 2}
+      if sqlStates <> '' then
+        set @sqlState = concat('sqlstate: ', sqlStates);
+        set @sqlCode = concat('sqlcode: ', sqlCodes);
+        set @errstr = concat(@msgTxt, ' (', @sqlState, '; ', @sqlCode, ')', '\n\n', msgTxts);
+      else
+        set @errstr = @msgTxt;
+      end if;
+      set @errstr = concat('{$ProcName} ', @sqlState_, ' ', @sqlCode_, ' ', @errstr);
+      if @@in_transaction then
+        rollback;
+      end if;
+      resignal set message_text = @errstr;
+    end if;
+  end if;
+end;
+
+XXX: repeat
+
+if @@in_transaction then
+  {Raise_ '20002', 'Cannot run inside an already opened tran'}
+end if;

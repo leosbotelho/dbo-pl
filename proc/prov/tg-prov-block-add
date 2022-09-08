@@ -1,0 +1,68 @@
+create or replace procedure TgProvBlock_Add_tr (
+  p_Db        tinyint,
+  p_TgName    char(22),
+  p_Name      char(18),
+  p_BlockDtm  datetime(0),
+
+  out
+  p_ProvHash  bigint unsigned
+)
+begin
+
+{$Boilerplate}
+
+-- Execute
+
+set transaction isolation level Serializable;
+
+start transaction;
+
+set @Dtm = now(3);
+
+set @Des = 'Tg';
+
+set @StatHash = {hash_ qw(@Des p_TgName p_Name)};
+
+set @Hash = {hash_ qw(@Des p_TgName p_Name p_BlockDtm)};
+
+set p_ProvHash = @Hash;
+
+{
+my $f = sub {
+our $Db = shift;
+view q{
+if not exists (
+  select 1
+  from {$Db}.Prov
+  where Hash = @Hash
+) then
+
+  insert into {$Db}.Prov (StatHash, Hash, Des, Dtm, UpdatedDtm)
+  values (@StatHash, @Hash, @Des, @Dtm, @Dtm);
+
+  {shr_ 2, RaiseOnErr ('Insert', "$Db.Prov")}
+
+  insert into {$Db}.ProvBlock (ProvHash, BlockDtm)
+  values (@Hash, p_BlockDtm);
+
+  {shr_ 2, RaiseOnErr ('Insert', "$Db.ProvBlock")}
+
+  insert into {$Db}.TgProv (ProvHash, TgName, Name)
+  values (@Hash, p_TgName, p_Name);
+
+  {shr_ 2, RaiseOnErr ('Insert', "$Db.TgProv")}
+
+else
+
+  update {$Db}.Prov set UpdatedDtm = @Dtm where Hash = @Hash;
+
+  {shr_ 2, RaiseOnErr ('Update', "$Db.Prov")}
+
+end if;
+}};
+
+if_p_Db ('BB', $f) . "\n\n" . if_p_Db ('BBR', $f);
+
+}
+
+{$End}

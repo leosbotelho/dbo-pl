@@ -1,0 +1,60 @@
+set @Dtm = now(3);
+
+-- Ref_Chain
+
+insert into Ref_Chain(Id, ChainName, ChainId, NetworkName, NetworkId, Dtm)
+  values (1, 'Mainnet', 1, 'Eth', 1, @Dtm);
+
+
+-- Ref_Dex
+
+insert into Ref_Dex(DexProto, Dex, Dtm)
+  values
+    ('Univ3', 'Univ3', @Dtm),
+    ('Univ2', 'Univ2', @Dtm),
+    ('Univ2', 'Sushi', @Dtm),
+    ('Univ2', 'Shiba', @Dtm);
+
+-- Ref_UniFactory
+
+{
+  my @Ruf = (
+    [qw(0x1F98431c8aD98523631AE4a59f267346ea31F984 1 Univ3 Univ3)],
+    [qw(0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f 1 Univ2 Univ2)],
+    [qw(0xC0AEe478e3658e2610c5F7A4A2E1777cE9e4f2Ac 1 Univ2 Sushi)],
+    [qw(0x115934131916C8b277DD010Ee02de363c09d037c 1 Univ2 Shiba)]
+  );
+
+  my $Insert1 = ltrim q{
+insert into Ref_UniFactory(AddrHash, $ChainId, DexProto, Dex, Dtm)
+  values
+};
+  my $Insert1_values = do {
+    my $h = sub { "(md5_u64(Addr('$_[0]')), $_[1], '$_[2]', '$_[3]', \@Dtm)" };
+    shr 4, join (",\n", map { $h->(@$_) } @Ruf);
+  };
+
+  my $Insert2 = ltrim q{
+insert into Ref_UniFactoryAddr(AddrHash, Addr)
+  values
+};
+  my $Insert2_values =
+    shr 4, join (",\n", map { "(md5_u64(Addr('$_[0]')), Addr('$_[0]'))" } @Ruf);
+
+  $Insert1 . $Insert1_values . "\n;\n\n" .
+  $Insert2 . $Insert2_values . "\n;"     ;
+}
+
+-- Ref_TgName
+
+insert into Ref_TgName($ChainId, DexProto, Dex, Name, Dtm)
+  values
+    (1, 'Univ3', 'Univ3', 'uniswap/uniswap-v3', @Dtm),
+    (1, 'Univ2', 'Univ2', 'uniswap/uniswap-v2', @Dtm),
+    (1, 'Univ2', 'Sushi', 'sushiswap/exchange', @Dtm),
+    (1, 'Univ2', 'Shiba', 'shibaswaparmy/exchange', @Dtm);
+
+-- Ref_GithubPath
+
+insert into Ref_GithubPath($Name, Owner, Repo, Ref, Path, Dtm)
+  values('SushiTl', 'sushiswap', 'default-token-list', 'master', 'tokens/mainnet.json', @Dtm);

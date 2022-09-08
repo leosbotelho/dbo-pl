@@ -1,0 +1,14 @@
+{paramSz '32m'}
+
+create table Param (
+  $Id        bigint not null,
+  Dtm        datetime(3) not null,
+  ProcName   varchar(64) not null,
+  ParamName  varchar(64) not null,
+
+  -- CI
+  Primary Key (Dtm, $Id, ProcName, ParamName),
+  Constraint Param_PK Unique ($Id, ProcName, ParamName)
+)
+Engine=Memory
+;

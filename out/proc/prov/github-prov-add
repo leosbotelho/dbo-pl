@@ -1,0 +1,236 @@
+create or replace procedure GithubProv_Add_tr (
+  p_Db              tinyint,
+  p_GithubPathName  char(7),
+  p_CommitDtm       datetime(3),
+
+  out
+  p_ProvHash        bigint unsigned
+)
+begin
+
+-- Boilerplate
+
+declare err boolean default false;
+declare cont boolean default false;
+declare gobble boolean default false;
+declare sqlStates varchar(512) default '';
+declare sqlCodes varchar(512) default '';
+declare msgTxts varchar(512) default '';
+declare lastSqlCode smallint default 0;
+declare lastMsgTxt varchar(512) default '';
+
+declare continue handler for SQLWarning
+begin
+  if not gobble then
+    get diagnostics @errCount = number;
+    set @i = 1;
+    while @i <= @errCount do
+      get diagnostics condition @i
+        @sqlState = returned_sqlstate, @sqlCode = mysql_errno, @msgTxt = message_text;
+      set @errstr = concat('GithubProv_Add_tr ', @sqlState, ' ', @sqlCode, ' ', @msgTxt);
+      select @sqlState as `SqlState`, @sqlCode as `SqlCode`, @errstr as Warn;
+      set @i = @i + 1;
+    end while;
+  end if;
+end;
+
+declare continue handler for SQLException, 1265
+begin
+  set err = true;
+  if not gobble then
+    if cont then
+      get diagnostics @errCount = number;
+      if @errCount >= 1 then
+        get diagnostics condition 1
+          @sqlState = returned_sqlstate, @sqlCode = mysql_errno, @msgTxt_ = message_text;
+        set @msgTxt = concat(@sqlState, ' ', @sqlCode, ' ', @msgTxt_);
+        set sqlStates = case when sqlStates = ''
+          then @sqlState else concat(sqlStates, ', ', @sqlState) end;
+        set sqlCodes = case when sqlCodes = ''
+          then @sqlCode else concat(sqlCodes, ', ', @sqlCode) end;
+        set msgTxts = case when msgTxts = ''
+          then @msgTxt else concat(msgTxts, '\n', @msgTxt) end;
+        set @i = 2;
+        while @i <= @errCount do
+          get diagnostics condition @i
+            @sqlState = returned_sqlstate, @sqlCode = mysql_errno, @msgTxt_ = message_text;
+          set @msgTxt = concat(@sqlState, ' ', @sqlCode, ' ', @msgTxt_);
+          set sqlStates = concat(sqlStates, ', ', @sqlState);
+          set sqlCodes = concat(sqlCodes, ', ', @sqlCode);
+          set msgTxts = concat(msgTxts, '\n', @msgTxt);
+          set @i = @i + 1;
+        end while;
+      end if;
+    else
+      get diagnostics condition 1
+        @sqlState_ = returned_sqlstate, @sqlCode_ = mysql_errno, @msgTxt = message_text;
+      get diagnostics @errCount = number;
+      if @errCount >= 2 then
+        get diagnostics condition 2
+          @sqlState = returned_sqlstate, @sqlCode = mysql_errno, @msgTxt_ = message_text;
+        set @msgTxt = concat(@sqlState, ' ', @sqlCode, ' ', @msgTxt_);
+        set sqlStates = case when sqlStates = ''
+          then @sqlState else concat(sqlStates, ', ', @sqlState) end;
+        set sqlCodes = case when sqlCodes = ''
+          then @sqlCode else concat(sqlCodes, ', ', @sqlCode) end;
+        set msgTxts = case when msgTxts = ''
+          then @msgTxt else concat(msgTxts, '\n', @msgTxt) end;
+        set @i = 3;
+        while @i <= @errCount do
+          get diagnostics condition @i
+            @sqlState = returned_sqlstate, @sqlCode = mysql_errno, @msgTxt_ = message_text;
+          set @msgTxt = concat(@sqlState, ' ', @sqlCode, ' ', @msgTxt_);
+          set sqlStates = concat(sqlStates, ', ', @sqlState);
+          set sqlCodes = concat(sqlCodes, ', ', @sqlCode);
+          set msgTxts = concat(msgTxts, '\n', @msgTxt);
+          set @i = @i + 1;
+        end while;
+      end if;
+      if sqlStates <> '' then
+        set @sqlState = concat('sqlstate: ', sqlStates);
+        set @sqlCode = concat('sqlcode: ', sqlCodes);
+        set @errstr = concat(@msgTxt, ' (', @sqlState, '; ', @sqlCode, ')', '\n\n', msgTxts);
+      else
+        set @errstr = @msgTxt;
+      end if;
+      set @errstr = concat('GithubProv_Add_tr ', @sqlState_, ' ', @sqlCode_, ' ', @errstr);
+      if @@in_transaction then
+        rollback;
+      end if;
+      resignal set message_text = @errstr;
+    end if;
+  end if;
+end;
+
+XXX: repeat
+
+if @@in_transaction then
+  set lastSqlCode = 20002;
+  set lastMsgTxt = 'Cannot run inside an already opened tran';
+  leave XXX;
+end if;
+
+-- Execute
+
+set transaction isolation level Serializable;
+
+start transaction;
+
+set @Dtm = now(3);
+
+set @Des = 'Github';
+
+set @StatHash = md5_u64(concat(
+    @Des
+  , chr(0x1f)
+  , p_GithubPathName
+));
+
+set @Hash = md5_u64(concat(
+    @Des
+  , chr(0x1f)
+  , p_GithubPathName
+  , chr(0x1f)
+  , p_CommitDtm
+));
+
+set p_ProvHash = @Hash;
+
+if p_Db & 1 then
+  
+  if not exists (
+    select 1
+    from BB.Prov
+    where Hash = @Hash
+  ) then
+
+    insert into BB.Prov (StatHash, Hash, Des, Dtm, UpdatedDtm)
+    values (@StatHash, @Hash, @Des, @Dtm, @Dtm);
+
+    if err then
+      set lastSqlCode = 10000;
+      set lastMsgTxt = 'Insert BB.Prov failed';
+      leave XXX;
+    end if;
+
+    insert into BB.GithubProv (ProvHash, GithubPathName, CommitDtm)
+    values (@Hash, p_GithubPathName, p_CommitDtm);
+
+    if err then
+      set lastSqlCode = 10001;
+      set lastMsgTxt = 'Insert BB.GithubProv failed';
+      leave XXX;
+    end if;
+
+  else
+
+    update BB.Prov set UpdatedDtm = @Dtm where Hash = @Hash;
+
+    if err then
+      set lastSqlCode = 10002;
+      set lastMsgTxt = 'Update BB.Prov failed';
+      leave XXX;
+    end if;
+
+  end if;
+
+end if;
+
+if p_Db & 2 then
+  
+  if not exists (
+    select 1
+    from BBR.Prov
+    where Hash = @Hash
+  ) then
+
+    insert into BBR.Prov (StatHash, Hash, Des, Dtm, UpdatedDtm)
+    values (@StatHash, @Hash, @Des, @Dtm, @Dtm);
+
+    if err then
+      set lastSqlCode = 10003;
+      set lastMsgTxt = 'Insert BBR.Prov failed';
+      leave XXX;
+    end if;
+
+    insert into BBR.GithubProv (ProvHash, GithubPathName, CommitDtm)
+    values (@Hash, p_GithubPathName, p_CommitDtm);
+
+    if err then
+      set lastSqlCode = 10004;
+      set lastMsgTxt = 'Insert BBR.GithubProv failed';
+      leave XXX;
+    end if;
+
+  else
+
+    update BBR.Prov set UpdatedDtm = @Dtm where Hash = @Hash;
+
+    if err then
+      set lastSqlCode = 10005;
+      set lastMsgTxt = 'Update BBR.Prov failed';
+      leave XXX;
+    end if;
+
+  end if;
+
+end if;
+
+until 1 end repeat;
+
+set cont = false;
+if @@in_transaction then
+  if lastSqlCode = 0 then
+    commit;
+  else
+    rollback;
+  end if;
+end if;
+
+set cont = false;
+if lastSqlCode <> 0 then
+  signal sqlstate '45100'
+    set mysql_errno = lastSqlCode, message_text = lastMsgTxt;
+end if;
+
+end;

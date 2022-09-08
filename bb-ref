@@ -1,0 +1,81 @@
+create table Ref_Chain (
+  Id           int not null,
+  ChainName    char(7) not null,
+  ChainId      tinyint unsigned not null,
+  NetworkName  char(3) not null,
+  NetworkId    tinyint unsigned not null,
+  Dtm          datetime(3) not null,
+
+  Primary Key (ChainName, ChainId, NetworkName, NetworkId),
+  Constraint Ref_Chain_AK Unique (Id)
+);
+
+create table Ref_Dex (
+  DexProto  char(5) not null,
+  Dex       char(5) not null,
+  Dtm       datetime(3) not null,
+
+  Primary Key (DexProto, Dex),
+
+  Constraint DexProto_enum_ck Check (DexProto in ('Univ3', 'Univ2'))
+);
+
+create table Ref_UniFactory (
+  AddrHash  bigint unsigned not null,
+  $ChainId  int not null,
+  DexProto  char(5) not null,
+  Dex       char(5) not null,
+  Dtm       datetime(3) not null,
+
+  Primary Key (AddrHash),
+
+  Foreign Key ($ChainId) references Ref_Chain (Id),
+  Foreign Key (DexProto, Dex) references Ref_Dex (DexProto, Dex)
+);
+
+create table Ref_UniFactoryAddr (
+  AddrHash  bigint unsigned not null,
+  Addr      binary(20) not null,
+
+  Primary Key (AddrHash),
+  Foreign Key (AddrHash) references Ref_UniFactory (AddrHash)
+);
+
+create algorithm=merge
+view Ref_UniFactory_V
+as
+select
+    A.AddrHash
+	, B.Addr
+	, A.DexProto
+	, A.Dex
+	, A.Dtm
+from Ref_UniFactory A
+	 , Ref_UniFactoryAddr B
+where A.AddrHash = B.AddrHash
+;
+
+create table Ref_TgName (
+  $ChainId  int not null,
+  DexProto  char(5) not null,
+  Dex       char(5) not null,
+  Name      char(22) not null,
+  Dtm       datetime(3) not null,
+
+  Primary Key ($ChainId, DexProto, Dex),
+  Constraint Ref_TgName_AK Unique (Name),
+
+  Foreign Key ($ChainId) references Ref_Chain (Id),
+  Foreign Key (DexProto, Dex) references Ref_Dex (DexProto, Dex)
+);
+
+create table Ref_GithubPath (
+  $Name  char(7) not null,
+  Owner  char(9) not null,
+  Repo   char(18) not null,
+  Ref    char(6) not null,
+  Path   char(19) not null,
+  Dtm    datetime(3) not null,
+
+  Primary Key ($Name)
+);

@@ -1,0 +1,10 @@
+insert into {$Db}.TokenProv (TokenHash, ProvHash)
+select
+    P1.Hash
+  , p_ProvHash
+from {$P1}
+where P1.$Id = $Pid
+  and P1.Bbr = {$Bbr}
+;
+
+{RaiseOnErr 'Insert', "$Db.TokenProv"}

@@ -1,0 +1,31 @@
+create or replace algorithm=merge
+view Token_V
+as
+select
+    T.Hash
+  , A.Addr
+  , T.Decimals
+  , T.Dtm
+  , T.UpdatedDtm
+  , coalesce((select Sym from Var_Token T1 where T.Hash = T1.Hash), '') as Sym
+  , coalesce((select Name from Var_Token T1 where T.Hash = T1.Hash), '') as Name
+  , coalesce((select Sym from Var_Token_O T2 where T.Hash = T2.Hash), '') as Sym_O
+  , coalesce((select Name from Var_Token_O T2 where T.Hash = T2.Hash), '') as Name_O
+{slurpv 'token-prov'}
+  , T.$ChainId
+  , C.ChainName
+  , C.ChainId
+  , C.NetworkName
+  , C.NetworkId
+  , C.Dtm as ChainDtm
+from Token T
+  ,  TokenAddr Ta
+  ,  TokenProv Tp
+  ,  Addr A
+  ,  Prov P
+  ,  Ref_Chain C
+where T.Hash = Ta.TokenHash
+  and T.Hash = Tp.TokenHash
+  and Ta.AddrHash = A.Hash
+  and Tp.ProvHash = P.Hash
+  and T.$ChainId = C.Id

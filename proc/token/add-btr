@@ -1,0 +1,58 @@
+{
+  requirep 'token/add-utr/a.pm';
+
+  $cont = 1;
+
+  '';
+}
+
+create or replace procedure Token_Add_btr (
+  p_Db         tinyint,
+  p_ProvHash   bigint unsigned,
+  $Pid         bigint
+)
+begin
+
+{Boilerplate}
+
+{valParam @Param}
+
+update {$P1}
+set Bbr = 1
+where $Id = $Pid
+  and (
+    $ChainId = {IntMin}
+    or Addr = ''
+    )
+;
+
+{RaiseOnErr qw(Update Par_Token_Add)}
+
+set @HasBbr = row_count() > 0;
+set @HasBb = exists (select 1 from {$P1} where Bbr = 0);
+
+{RaiseOnErr qw(Select HasBb)}
+
+if not (p_Db & {BB}) and @HasBb then
+  {RaiseNr 'Forbidden: instructed to only add BBR tokens; but requested to add BB tokens'}
+end if;
+
+if not (p_Db & {BBR}) and @HasBbr then
+  {RaiseNr 'Forbidden: instructed to only add BB tokens; but requested to add BBR tokens'}
+end if;
+
+-- Execute
+
+set transaction isolation level Serializable;
+
+start transaction;
+
+set @Dtm = now(3);
+
+{tokenAddUtr}
+
+{$Closing}
+
+{cleanupParam @Param}
+
+{$End_}

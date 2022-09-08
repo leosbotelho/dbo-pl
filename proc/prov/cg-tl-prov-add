@@ -1,0 +1,62 @@
+create or replace procedure CgTlProv_Add_tr (
+  p_Db        tinyint,
+  p_Id        char(7),
+  p_Dtm       datetime(3),
+
+  out
+  p_ProvHash  bigint unsigned
+)
+begin
+
+{$Boilerplate}
+
+-- Execute
+
+set transaction isolation level Serializable;
+
+start transaction;
+
+set @Dtm = now(3);
+
+set @Des = 'Cg';
+
+set @StatHash = {hash_ qw(@Des p_Id)};
+
+set @Hash = {hash_ qw(@Des p_Id p_Dtm)};
+
+set p_ProvHash = @Hash;
+
+{
+my $f = sub {
+our $Db = shift;
+view q{
+if not exists (
+  select 1
+  from {$Db}.Prov
+  where Hash = @Hash
+) then
+
+  insert into {$Db}.Prov (StatHash, Hash, Des, Dtm, UpdatedDtm)
+  values (@StatHash, @Hash, @Des, @Dtm, @Dtm);
+
+  {shr_ 2, RaiseOnErr ('Insert', "$Db.Prov")}
+
+  insert into {$Db}.CgTlProv (ProvHash, Id, Dtm)
+  values (@Hash, p_Id, p_Dtm);
+
+  {shr_ 2, RaiseOnErr ('Insert', "$Db.CgTlProv")}
+
+else
+
+  update {$Db}.Prov set UpdatedDtm = @Dtm where Hash = @Hash;
+
+  {shr_ 2, RaiseOnErr ('Update', "$Db.Prov")}
+
+end if;
+}};
+
+if_p_Db ('BB', $f) . "\n\n" . if_p_Db ('BBR', $f);
+
+}
+
+{$End}

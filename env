@@ -1,0 +1,11 @@
+create table Env_CurBlock (
+  BlockHash  binary(32) not null,
+  BlockDtm   datetime(0) not null,
+  Dtm        datetime(3) not null,
+
+  -- CI
+  Primary Key (Dtm, BlockDtm),
+
+  Constraint Env_CurBlock_PK Unique (BlockDtm),
+  Constraint Env_CurBlock_AK Unique (BlockHash)
+);

@@ -1,0 +1,20 @@
+{paramSz '32m'}
+
+create or replace table Par_Token_Hash (
+  $Id        bigint not null,
+  Hash       bigint unsigned not null,
+
+  Primary Key ($Id, Hash) using BTree
+)
+Engine=Memory
+;
+
+create or replace table Par_DbToken_Hash (
+  $Id   bigint not null,
+  Bbr   boolean not null,
+  Hash  bigint unsigned not null,
+
+  Primary Key ($Id, Bbr, Hash) using BTree
+)
+Engine=Memory
+;

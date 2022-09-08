@@ -1,0 +1,305 @@
+create or replace procedure Token_Mov_btr (
+)
+begin
+
+{Boilerplate}
+
+-- Validate
+
+{checkEmpty 'Token'}
+
+{
+  val 0, 'Token', OrdHash (
+    null => [qw(Sym Name Decimals)],
+    empty => [qw(Addr)],
+    neg => [qw(Decimals)],
+    optChainId => 'ChainId = ' . IntMin,
+    'opt$ChainId' => '$ChainId = ' . IntMin
+  )
+}
+
+{valUniq 1, 'Token', 'Hash', [qw($ChainId Addr)]}
+
+-- Execute
+{
+  our $Pag = '((@ProvHash is not null and Hash > @ProvHash) or @ProvHash is null)';
+
+  sub provChild {
+    my ($Tbl, @Col) = @_;
+"insert into BB.$Tbl (@{[join ', ', @Col]})
+    select @{[join ', ', @Col]}
+    from $Tbl O
+    where exists (
+      select 1
+      from BB.Prov P
+      where P.IsObsolete = 0
+        and P.UpdatedDtm = \@Dtm
+        and O.ProvHash = P.Hash
+      )
+    ;";
+  }
+
+  sub provGt {
+    my ($Des, $Tbl, $Col) = @_;
+
+trim "
+P.Des = '${Des}' and exists (
+  select 1
+  from BB.${Tbl} A
+     , BB.${Tbl} B
+  where A.ProvHash = P.Hash
+    and B.ProvHash = I.Hash
+    and B.${Col} > A.${Col}
+  )
+"
+  }
+
+
+  '';
+}
+set @i = 0;
+set @break = false;
+set @HasNewProv = true;
+set @ProvHashTmp = null;
+set @ProvHash = null;
+set @Dtm = cast(now(3) as datetime(6));
+repeat
+  set transaction isolation level Read Uncommitted;
+
+  start transaction;
+
+  if @HasNewProv then
+    insert into BB.Prov (Des, StatHash, Hash, Dtm, UpdatedDtm)
+    select
+        Des
+      , StatHash
+      , Hash
+      , @Dtm
+      , @Dtm
+    from Prov P
+    where {$Pag}
+      and exists (
+        select 1
+        from TokenProv Tp
+        where Tp.ProvHash = P.Hash
+        )
+      and not exists (
+        select 1
+        from BB.Prov I
+        where P.Hash = I.Hash
+        )
+    order by Hash limit 500;
+
+    set @break = row_count() < 1;
+
+    if @break then
+      set @HasNewProv = false;
+    end if;
+
+  end if;
+
+  if @HasNewProv then
+    set @ProvHashTmp = (
+      select max(Hash)
+      from BB.Prov
+      where IsObsolete = 0
+        and UpdatedDtm = @Dtm
+      )
+    ;
+
+    {provChild 'ProvBlock', qw(ProvHash BlockDtm)}
+
+    {provChild 'TgProv', qw(ProvHash TgName Name)}
+
+    {provChild 'CgTlProv', qw(ProvHash Id Dtm)}
+
+    {provChild 'GithubProv', qw(ProvHash GithubPathName CommitDtm)}
+
+    insert into BB.Token (
+        Hash
+      , $ChainDes
+      , $ChainId
+      , Decimals
+      , Dtm
+      , UpdatedDtm
+      )
+    select
+        Hash
+      , $ChainDes
+      , $ChainId
+      , Decimals
+      , @Dtm
+      , @Dtm
+    from Token T
+    where exists (
+        select 1
+        from TokenProv Tp
+           , BB.Prov P
+        where Tp.TokenHash = T.Hash
+          and P.IsObsolete = 0
+          and P.UpdatedDtm = @Dtm
+          and Tp.ProvHash = P.Hash
+        )
+      and not exists (
+        select 1
+        from BB.Token I
+        where T.Hash = I.Hash
+        )
+    ;
+
+    insert into BB.TokenProv (TokenHash, ProvHash)
+    select
+      Tp.TokenHash
+    , Tp.ProvHash
+    from TokenProv Tp
+       , BB.Prov P
+    where Tp.ProvHash = P.Hash
+      and P.IsObsolete = 0
+      and P.UpdatedDtm = @Dtm
+    ;
+
+    insert into BB.Addr (Hash, Des, Addr, Dtm)
+    select
+        md5_u64(T.Addr)
+      , 'Token'
+      , T.Addr
+      , @Dtm
+    from Token T
+       , BB.Token I
+    where I.UpdatedDtm = @Dtm
+      and I.Hash = T.Hash
+    ;
+
+    insert into BB.TokenAddr (TokenHash, AddrHash)
+    select
+        T.Hash
+      , md5_u64(T.Addr)
+    from Token T
+       , BB.Token I
+    where I.UpdatedDtm = @Dtm
+      and I.Hash = T.Hash
+    ;
+
+    insert into BB.Var_Token (Hash, Sym, Name)
+    select
+        T.Hash
+      , T.Sym
+      , T.Name
+    from Token T
+       , BB.Token I
+    where I.UpdatedDtm = @Dtm
+      and I.Hash = T.Hash
+      and (
+        length(T.Sym) <= 30
+        and length(T.Name) <= 50
+      )
+    ;
+
+    insert into BB.Var_Token_O (Hash, Sym, Name)
+    select
+        T.Hash
+      , T.Sym
+      , T.Name
+    from Token T
+       , BB.Token I
+    where I.UpdatedDtm = @Dtm
+      and I.Hash = T.Hash
+      and (
+        length(T.Sym) > 30
+        or length(T.Name) > 50
+      )
+    ;
+
+{
+  sub blockDtm {
+    "coalesce((select BlockDtm from ProvBlock where ProvHash = $_[0].Hash), UnixTs_zero())"
+  }
+
+  '';
+}
+
+    update BB.Prov P
+    set IsObsolete = 1
+      , UpdatedDtm = @Dtm
+    where IsObsolete = 0
+      and UpdatedDtm <> @Dtm
+      and exists (
+        select 1
+        from BB.Prov I
+           , BB.TokenProv Tp
+           , BB.TokenProv Tpi
+        where Tp.ProvHash = P.Hash
+          and Tpi.ProvHash = I.Hash
+          and Tp.TokenHash = Tpi.TokenHash
+          and I.IsObsolete = 0
+          and I.UpdatedDtm = @Dtm
+          and I.StatHash = P.StatHash
+          and (
+              (
+                {blockDtm 'P'}
+              < {blockDtm 'I'}
+              ) or
+              (
+              {shr_ 14, provGt ('Cg', 'CgTlProv', 'Dtm')}
+              ) or
+              (
+              {shr_ 14, provGt ('Github', 'GithubProv', 'CommitDtm')}
+              )
+            )
+        )
+    ;
+
+  end if;
+
+  update BB.Prov P
+  set UpdatedDtm = @Dtm
+  where IsObsolete = 0
+    and UpdatedDtm <> @Dtm
+    and {$Pag}
+    and exists (
+      select 1
+      from TokenProv Tp
+         , Prov I
+      where Tp.ProvHash = P.Hash
+        and I.Hash = P.Hash
+      )
+  order by Hash limit 500;
+
+  if @HasNewProv then
+    set @ProvHash = @ProvHashTmp;
+  else
+    set @break = row_count() < 1;
+
+    if @break then
+      rollback;
+      leave;
+    end if;
+
+  end if;
+
+  update BB.Token T
+  set UpdatedDtm = @Dtm
+  where UpdatedDtm <> @Dtm
+    and exists (
+      select 1
+      from BB.TokenProv Tp
+         , BB.Prov P
+      where Tp.TokenHash = T.Hash
+        and P.IsObsolete = 0
+        and P.UpdatedDtm = @Dtm
+        and P.Hash = Tp.ProvHash
+      )
+  ;
+
+  -- Commit
+
+  commit;
+
+  -- Batch id
+
+  set @i = (@i + 1) % 999;
+  set @Dtm = @Dtm + interval @i microsecond;
+
+until @break end repeat;
+
+{$End}

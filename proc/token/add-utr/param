@@ -1,0 +1,37 @@
+{
+  our @Param = paramSpread qw(Par_Token_Add $ O);
+  our ($T1, $T2) = @Param;
+  '';
+}
+
+{paramSz '32m'}
+
+create or replace table {$T1} (
+  $Id        bigint not null,
+  Hash       bigint unsigned not null,
+  $ChainDes  enum('Filled', 'Reported') not null,
+  $ChainId   int not null,
+  ChainId    int not null,
+  Sym        varchar(30) character set utf8mb4,
+  Name       varchar(50) character set utf8mb4,
+  Decimals   int,
+  Addr       binary(20) not null,
+  Bbr        boolean not null default false,
+
+  Primary Key ($Id, Hash) using BTree
+)
+Engine=Memory
+;
+
+create or replace table {$T2} (
+  $Id   bigint not null,
+  Hash  bigint unsigned not null,
+  Sym   text character set utf8mb4 not null,
+  Name  text character set utf8mb4 not null,
+  Addr  blob,
+
+  Primary Key ($Id, Hash),
+  Foreign Key ($Id, Hash) references {$T1} ($Id, Hash)
+)
+{$RamDisk}
+;

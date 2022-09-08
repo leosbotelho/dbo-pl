@@ -1,0 +1,24 @@
+reate table Token (
+  Hash        bigint unsigned not null,
+  $ChainDes   enum('Filled', 'Reported') not null,
+  -- opt -2^31
+  $ChainId    int not null,
+  -- opt -2^31
+  ChainId     int not null,
+  Sym         text character set utf8mb4,
+  Name        text character set utf8mb4,
+  Decimals    int,
+  Addr        binary(20) not null,
+  Addr_O      text not null,
+  Dtm         datetime(3) not null,
+  UpdatedDtm  datetime(3) not null,
+
+  -- CI
+  Primary Key ($ChainId, $ChainDes, ChainId, Dtm, Hash),
+
+  Constraint Unique Token_PK (Hash),
+
+  Unique (UpdatedDtm, Hash)
+)
+row_format=dynamic
+;

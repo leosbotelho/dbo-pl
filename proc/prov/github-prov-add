@@ -1,0 +1,62 @@
+create or replace procedure GithubProv_Add_tr (
+  p_Db              tinyint,
+  p_GithubPathName  char(7),
+  p_CommitDtm       datetime(3),
+
+  out
+  p_ProvHash        bigint unsigned
+)
+begin
+
+{$Boilerplate}
+
+-- Execute
+
+set transaction isolation level Serializable;
+
+start transaction;
+
+set @Dtm = now(3);
+
+set @Des = 'Github';
+
+set @StatHash = {hash_ qw(@Des p_GithubPathName)};
+
+set @Hash = {hash_ qw(@Des p_GithubPathName p_CommitDtm)};
+
+set p_ProvHash = @Hash;
+
+{
+my $f = sub {
+our $Db = shift;
+view q{
+if not exists (
+  select 1
+  from {$Db}.Prov
+  where Hash = @Hash
+) then
+
+  insert into {$Db}.Prov (StatHash, Hash, Des, Dtm, UpdatedDtm)
+  values (@StatHash, @Hash, @Des, @Dtm, @Dtm);
+
+  {shr_ 2, RaiseOnErr ('Insert', "$Db.Prov")}
+
+  insert into {$Db}.GithubProv (ProvHash, GithubPathName, CommitDtm)
+  values (@Hash, p_GithubPathName, p_CommitDtm);
+
+  {shr_ 2, RaiseOnErr ('Insert', "$Db.GithubProv")}
+
+else
+
+  update {$Db}.Prov set UpdatedDtm = @Dtm where Hash = @Hash;
+
+  {shr_ 2, RaiseOnErr ('Update', "$Db.Prov")}
+
+end if;
+}};
+
+if_p_Db ('BB', $f) . "\n\n" . if_p_Db ('BBR', $f);
+
+}
+
+{$End}

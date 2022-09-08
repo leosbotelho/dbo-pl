@@ -1,0 +1,18 @@
+install -d -m 0770 -o mysql -g mysql /var/ramdisk
+mount -t tmpfs -o size=128m none /var/ramdisk
+# /etc/fstab
+none /var/ramdisk tmpfs defaults,size=128m 1 2
+
+create database BB charset utf8mb4;
+create database BBR charset utf8mb4;
+
+grant file on *.* to 'BB'@'localhost';
+grant file on *.* to 'BBR'@'localhost';
+
+grant all privileges on BBR.* to 'BB'@'localhost';
+grant all privileges on BBR.* to 'BBR'@'localhost';
+
+grant all privileges on BB.* to 'BB'@'localhost';
+grant select on BB.* to 'BBR'@'localhost';
+
+flush privileges;

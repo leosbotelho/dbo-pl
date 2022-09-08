@@ -1,0 +1,55 @@
+create or replace procedure Env_CurBlock_Add_tr (
+  p_BlockHash  binary(32),
+  p_BlockDtm   datetime(0),
+  p_Dtm        datetime(3)
+)
+begin
+
+{$Boilerplate}
+
+-- Validate
+
+set transaction isolation level Read Committed;
+
+start transaction read only;
+
+if exists (
+  select 1
+  from Env_CurBlock
+  where BlockDtm = p_BlockDtm
+     or BlockHash = p_BlockHash
+  )
+then
+  {Raise 'Env_CurBlock has already been recorded'}
+end if;
+
+commit;
+
+-- Execute
+
+set transaction isolation level Serializable;
+
+start transaction;
+
+if exists (
+  select 1
+  from Env_CurBlock
+  where BlockDtm = p_BlockDtm
+     or BlockHash = p_BlockHash
+  )
+then
+  {Raise 'Env_CurBlock has already been recorded'}
+end if;
+
+if p_BlockDtm < (select max(BlockDtm) from Env_CurBlock) then
+  {Warn 'BlockDtm travelling'}
+end if;
+
+set cont = true;
+
+insert into Env_CurBlock(BlockHash, BlockDtm, Dtm)
+  values (p_BlockHash, p_BlockDtm, p_Dtm);
+
+{RaiseOnErr qw(Insert Env_CurBlock)}
+
+{$End}

@@ -1,0 +1,93 @@
+create or replace algorithm=merge
+view Token_V
+as
+select
+    T.Hash
+  , A.Addr
+  , T.Decimals
+  , T.Dtm
+  , T.UpdatedDtm
+  , coalesce((select Sym from Var_Token T1 where T.Hash = T1.Hash), '') as Sym
+  , coalesce((select Name from Var_Token T1 where T.Hash = T1.Hash), '') as Name
+  , coalesce((select Sym from Var_Token_O T2 where T.Hash = T2.Hash), '') as Sym_O
+  , coalesce((select Name from Var_Token_O T2 where T.Hash = T2.Hash), '') as Name_O
+  , P.Des as ProvDes
+  , P.Dtm as ProvDtm
+  , P.UpdatedDtm as ProvUpdatedDtm
+  , P.Hash as ProvHash
+  , coalesce((select BlockDtm from ProvBlock I where I.ProvHash = P.Hash), '') as ProvBlockDtm
+  , case
+    when P.Des = 'Tg'
+      then (
+          select TgName
+          from TgProv I
+          where I.ProvHash = P.Hash
+          )
+    else ''
+    end as ProvTgName
+  , case
+    when P.Des = 'Tg'
+      then (
+          select Name
+          from TgProv I
+          where I.ProvHash = P.Hash
+          )
+    else ''
+    end as ProvTg_Name
+  , case
+    when P.Des = 'Cg'
+      then (
+          select Id
+          from CgTlProv I
+          where I.ProvHash = P.Hash
+          )
+    else ''
+    end as ProvCgId
+  , case
+    when P.Des = 'Cg'
+      then (
+          select Dtm
+          from CgTlProv I
+          where I.ProvHash = P.Hash
+          )
+    else ''
+    end as ProvCgDtm
+  , case
+    when P.Des = 'Github'
+      then (
+          select GithubPathName
+          from GithubProv I
+          where I.ProvHash = P.Hash
+          )
+    else ''
+    end as ProvGithubPathName
+  , case
+    when P.Des = 'Github'
+      then (
+          select case
+              when CommitDtm = UnixTs_zero()
+                then ''
+              else CommitDtm
+              end
+          from GithubProv I
+          where I.ProvHash = P.Hash
+          )
+    else ''
+    end as ProvCommitDtm
+  , T.$ChainId
+  , C.ChainName
+  , C.ChainId
+  , C.NetworkName
+  , C.NetworkId
+  , C.Dtm as ChainDtm
+from Token T
+  ,  TokenAddr Ta
+  ,  TokenProv Tp
+  ,  Addr A
+  ,  Prov P
+  ,  Ref_Chain C
+where T.Hash = Ta.TokenHash
+  and T.Hash = Tp.TokenHash
+  and Ta.AddrHash = A.Hash
+  and Tp.ProvHash = P.Hash
+  and T.$ChainId = C.Id

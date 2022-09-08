@@ -1,0 +1,469 @@
+create or replace procedure Token_Mov_btr (
+)
+begin
+
+-- Boilerplate
+
+declare err boolean default false;
+declare cont boolean default false;
+declare gobble boolean default false;
+declare sqlStates varchar(512) default '';
+declare sqlCodes varchar(512) default '';
+declare msgTxts varchar(512) default '';
+declare lastSqlCode smallint default 0;
+declare lastMsgTxt varchar(512) default '';
+
+declare continue handler for SQLWarning
+begin
+  if not gobble then
+    get diagnostics @errCount = number;
+    set @i = 1;
+    while @i <= @errCount do
+      get diagnostics condition @i
+        @sqlState = returned_sqlstate, @sqlCode = mysql_errno, @msgTxt = message_text;
+      set @errstr = concat('Token_Mov_btr ', @sqlState, ' ', @sqlCode, ' ', @msgTxt);
+      select @sqlState as `SqlState`, @sqlCode as `SqlCode`, @errstr as Warn;
+      set @i = @i + 1;
+    end while;
+  end if;
+end;
+
+declare continue handler for SQLException, 1265
+begin
+  set err = true;
+  if not gobble then
+    if cont then
+      get diagnostics @errCount = number;
+      if @errCount >= 1 then
+        get diagnostics condition 1
+          @sqlState = returned_sqlstate, @sqlCode = mysql_errno, @msgTxt_ = message_text;
+        set @msgTxt = concat(@sqlState, ' ', @sqlCode, ' ', @msgTxt_);
+        set sqlStates = case when sqlStates = ''
+          then @sqlState else concat(sqlStates, ', ', @sqlState) end;
+        set sqlCodes = case when sqlCodes = ''
+          then @sqlCode else concat(sqlCodes, ', ', @sqlCode) end;
+        set msgTxts = case when msgTxts = ''
+          then @msgTxt else concat(msgTxts, '\n', @msgTxt) end;
+        set @i = 2;
+        while @i <= @errCount do
+          get diagnostics condition @i
+            @sqlState = returned_sqlstate, @sqlCode = mysql_errno, @msgTxt_ = message_text;
+          set @msgTxt = concat(@sqlState, ' ', @sqlCode, ' ', @msgTxt_);
+          set sqlStates = concat(sqlStates, ', ', @sqlState);
+          set sqlCodes = concat(sqlCodes, ', ', @sqlCode);
+          set msgTxts = concat(msgTxts, '\n', @msgTxt);
+          set @i = @i + 1;
+        end while;
+      end if;
+    else
+      get diagnostics condition 1
+        @sqlState_ = returned_sqlstate, @sqlCode_ = mysql_errno, @msgTxt = message_text;
+      get diagnostics @errCount = number;
+      if @errCount >= 2 then
+        get diagnostics condition 2
+          @sqlState = returned_sqlstate, @sqlCode = mysql_errno, @msgTxt_ = message_text;
+        set @msgTxt = concat(@sqlState, ' ', @sqlCode, ' ', @msgTxt_);
+        set sqlStates = case when sqlStates = ''
+          then @sqlState else concat(sqlStates, ', ', @sqlState) end;
+        set sqlCodes = case when sqlCodes = ''
+          then @sqlCode else concat(sqlCodes, ', ', @sqlCode) end;
+        set msgTxts = case when msgTxts = ''
+          then @msgTxt else concat(msgTxts, '\n', @msgTxt) end;
+        set @i = 3;
+        while @i <= @errCount do
+          get diagnostics condition @i
+            @sqlState = returned_sqlstate, @sqlCode = mysql_errno, @msgTxt_ = message_text;
+          set @msgTxt = concat(@sqlState, ' ', @sqlCode, ' ', @msgTxt_);
+          set sqlStates = concat(sqlStates, ', ', @sqlState);
+          set sqlCodes = concat(sqlCodes, ', ', @sqlCode);
+          set msgTxts = concat(msgTxts, '\n', @msgTxt);
+          set @i = @i + 1;
+        end while;
+      end if;
+      if sqlStates <> '' then
+        set @sqlState = concat('sqlstate: ', sqlStates);
+        set @sqlCode = concat('sqlcode: ', sqlCodes);
+        set @errstr = concat(@msgTxt, ' (', @sqlState, '; ', @sqlCode, ')', '\n\n', msgTxts);
+      else
+        set @errstr = @msgTxt;
+      end if;
+      set @errstr = concat('Token_Mov_btr ', @sqlState_, ' ', @sqlCode_, ' ', @errstr);
+      if @@in_transaction then
+        rollback;
+      end if;
+      resignal set message_text = @errstr;
+    end if;
+  end if;
+end;
+
+XXX: repeat
+
+if @@in_transaction then
+  set lastSqlCode = 20002;
+  set lastMsgTxt = 'Cannot run inside an already opened tran';
+  leave XXX;
+end if;
+
+-- Validate
+
+if not exists (
+  select 1 from Token
+) then
+  select 'Warn', chr(0x1f), concat('Token_Mov_btr 01000 20001 ', 'empty Token');
+  leave XXX;
+end if;
+
+select
+  (Sym is null) as nullSym,
+  (Name is null) as nullName,
+  (Decimals is null) as nullDecimals,
+  (Addr = '') as emptyAddr,
+  (Decimals < 0) as negDecimals,
+  (ChainId = -2147483648) as optChainId,
+  ($ChainId = -2147483648) as opt$ChainId
+from
+  Token
+where
+     (Sym is null)
+  or (Name is null)
+  or (Decimals is null)
+  or (Addr = '')
+  or (Decimals < 0)
+  or (ChainId = -2147483648)
+  or ($ChainId = -2147483648)
+limit
+  1
+;
+
+if (found_rows() > 0) then leave XXX; end if;
+
+if exists (
+  select 1
+  from Token A, Token B
+  where (
+      A.Hash <> B.Hash
+      )
+    and (
+      A.$ChainId = B.$ChainId
+      and A.Addr = B.Addr
+      )
+) then
+  set lastSqlCode = 11000;
+  set lastMsgTxt = 'Duplicate ($ChainId, Addr)';
+  leave XXX;
+end if;
+
+
+-- Execute
+
+set @i = 0;
+set @break = false;
+set @HasNewProv = true;
+set @ProvHashTmp = null;
+set @ProvHash = null;
+set @Dtm = cast(now(3) as datetime(6));
+repeat
+  set transaction isolation level Read Uncommitted;
+
+  start transaction;
+
+  if @HasNewProv then
+    insert into BB.Prov (Des, StatHash, Hash, Dtm, UpdatedDtm)
+    select
+        Des
+      , StatHash
+      , Hash
+      , @Dtm
+      , @Dtm
+    from Prov P
+    where ((@ProvHash is not null and Hash > @ProvHash) or @ProvHash is null)
+      and exists (
+        select 1
+        from TokenProv Tp
+        where Tp.ProvHash = P.Hash
+        )
+      and not exists (
+        select 1
+        from BB.Prov I
+        where P.Hash = I.Hash
+        )
+    order by Hash limit 500;
+
+    set @break = row_count() < 1;
+
+    if @break then
+      set @HasNewProv = false;
+    end if;
+
+  end if;
+
+  if @HasNewProv then
+    set @ProvHashTmp = (
+      select max(Hash)
+      from BB.Prov
+      where IsObsolete = 0
+        and UpdatedDtm = @Dtm
+      )
+    ;
+
+    insert into BB.ProvBlock (ProvHash, BlockDtm)
+    select ProvHash, BlockDtm
+    from ProvBlock O
+    where exists (
+      select 1
+      from BB.Prov P
+      where P.IsObsolete = 0
+        and P.UpdatedDtm = @Dtm
+        and O.ProvHash = P.Hash
+      )
+    ;
+
+    insert into BB.TgProv (ProvHash, TgName, Name)
+    select ProvHash, TgName, Name
+    from TgProv O
+    where exists (
+      select 1
+      from BB.Prov P
+      where P.IsObsolete = 0
+        and P.UpdatedDtm = @Dtm
+        and O.ProvHash = P.Hash
+      )
+    ;
+
+    insert into BB.CgTlProv (ProvHash, Id, Dtm)
+    select ProvHash, Id, Dtm
+    from CgTlProv O
+    where exists (
+      select 1
+      from BB.Prov P
+      where P.IsObsolete = 0
+        and P.UpdatedDtm = @Dtm
+        and O.ProvHash = P.Hash
+      )
+    ;
+
+    insert into BB.GithubProv (ProvHash, GithubPathName, CommitDtm)
+    select ProvHash, GithubPathName, CommitDtm
+    from GithubProv O
+    where exists (
+      select 1
+      from BB.Prov P
+      where P.IsObsolete = 0
+        and P.UpdatedDtm = @Dtm
+        and O.ProvHash = P.Hash
+      )
+    ;
+
+    insert into BB.Token (
+        Hash
+      , $ChainDes
+      , $ChainId
+      , Decimals
+      , Dtm
+      , UpdatedDtm
+      )
+    select
+        Hash
+      , $ChainDes
+      , $ChainId
+      , Decimals
+      , @Dtm
+      , @Dtm
+    from Token T
+    where exists (
+        select 1
+        from TokenProv Tp
+           , BB.Prov P
+        where Tp.TokenHash = T.Hash
+          and P.IsObsolete = 0
+          and P.UpdatedDtm = @Dtm
+          and Tp.ProvHash = P.Hash
+        )
+      and not exists (
+        select 1
+        from BB.Token I
+        where T.Hash = I.Hash
+        )
+    ;
+
+    insert into BB.TokenProv (TokenHash, ProvHash)
+    select
+      Tp.TokenHash
+    , Tp.ProvHash
+    from TokenProv Tp
+       , BB.Prov P
+    where Tp.ProvHash = P.Hash
+      and P.IsObsolete = 0
+      and P.UpdatedDtm = @Dtm
+    ;
+
+    insert into BB.Addr (Hash, Des, Addr, Dtm)
+    select
+        md5_u64(T.Addr)
+      , 'Token'
+      , T.Addr
+      , @Dtm
+    from Token T
+       , BB.Token I
+    where I.UpdatedDtm = @Dtm
+      and I.Hash = T.Hash
+    ;
+
+    insert into BB.TokenAddr (TokenHash, AddrHash)
+    select
+        T.Hash
+      , md5_u64(T.Addr)
+    from Token T
+       , BB.Token I
+    where I.UpdatedDtm = @Dtm
+      and I.Hash = T.Hash
+    ;
+
+    insert into BB.Var_Token (Hash, Sym, Name)
+    select
+        T.Hash
+      , T.Sym
+      , T.Name
+    from Token T
+       , BB.Token I
+    where I.UpdatedDtm = @Dtm
+      and I.Hash = T.Hash
+      and (
+        length(T.Sym) <= 30
+        and length(T.Name) <= 50
+      )
+    ;
+
+    insert into BB.Var_Token_O (Hash, Sym, Name)
+    select
+        T.Hash
+      , T.Sym
+      , T.Name
+    from Token T
+       , BB.Token I
+    where I.UpdatedDtm = @Dtm
+      and I.Hash = T.Hash
+      and (
+        length(T.Sym) > 30
+        or length(T.Name) > 50
+      )
+    ;
+
+
+
+    update BB.Prov P
+    set IsObsolete = 1
+      , UpdatedDtm = @Dtm
+    where IsObsolete = 0
+      and UpdatedDtm <> @Dtm
+      and exists (
+        select 1
+        from BB.Prov I
+           , BB.TokenProv Tp
+           , BB.TokenProv Tpi
+        where Tp.ProvHash = P.Hash
+          and Tpi.ProvHash = I.Hash
+          and Tp.TokenHash = Tpi.TokenHash
+          and I.IsObsolete = 0
+          and I.UpdatedDtm = @Dtm
+          and I.StatHash = P.StatHash
+          and (
+              (
+                coalesce((select BlockDtm from ProvBlock where ProvHash = P.Hash), UnixTs_zero())
+              < coalesce((select BlockDtm from ProvBlock where ProvHash = I.Hash), UnixTs_zero())
+              ) or
+              (
+              P.Des = 'Cg' and exists (
+                select 1
+                from BB.CgTlProv A
+                   , BB.CgTlProv B
+                where A.ProvHash = P.Hash
+                  and B.ProvHash = I.Hash
+                  and B.Dtm > A.Dtm
+                )
+              ) or
+              (
+              P.Des = 'Github' and exists (
+                select 1
+                from BB.GithubProv A
+                   , BB.GithubProv B
+                where A.ProvHash = P.Hash
+                  and B.ProvHash = I.Hash
+                  and B.CommitDtm > A.CommitDtm
+                )
+              )
+            )
+        )
+    ;
+
+  end if;
+
+  update BB.Prov P
+  set UpdatedDtm = @Dtm
+  where IsObsolete = 0
+    and UpdatedDtm <> @Dtm
+    and ((@ProvHash is not null and Hash > @ProvHash) or @ProvHash is null)
+    and exists (
+      select 1
+      from TokenProv Tp
+         , Prov I
+      where Tp.ProvHash = P.Hash
+        and I.Hash = P.Hash
+      )
+  order by Hash limit 500;
+
+  if @HasNewProv then
+    set @ProvHash = @ProvHashTmp;
+  else
+    set @break = row_count() < 1;
+
+    if @break then
+      rollback;
+      leave;
+    end if;
+
+  end if;
+
+  update BB.Token T
+  set UpdatedDtm = @Dtm
+  where UpdatedDtm <> @Dtm
+    and exists (
+      select 1
+      from BB.TokenProv Tp
+         , BB.Prov P
+      where Tp.TokenHash = T.Hash
+        and P.IsObsolete = 0
+        and P.UpdatedDtm = @Dtm
+        and P.Hash = Tp.ProvHash
+      )
+  ;
+
+  -- Commit
+
+  commit;
+
+  -- Batch id
+
+  set @i = (@i + 1) % 999;
+  set @Dtm = @Dtm + interval @i microsecond;
+
+until @break end repeat;
+
+until 1 end repeat;
+
+set cont = false;
+if @@in_transaction then
+  if lastSqlCode = 0 then
+    commit;
+  else
+    rollback;
+  end if;
+end if;
+
+set cont = false;
+if lastSqlCode <> 0 then
+  signal sqlstate '45100'
+    set mysql_errno = lastSqlCode, message_text = lastMsgTxt;
+end if;
+
+end;

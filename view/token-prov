@@ -1,0 +1,63 @@
+  , P.Des as ProvDes
+  , P.Dtm as ProvDtm
+  , P.UpdatedDtm as ProvUpdatedDtm
+  , P.Hash as ProvHash
+  , coalesce((select BlockDtm from ProvBlock I where I.ProvHash = P.Hash), '') as ProvBlockDtm
+  , case
+    when P.Des = 'Tg'
+      then (
+          select TgName
+          from TgProv I
+          where I.ProvHash = P.Hash
+          )
+    else ''
+    end as ProvTgName
+  , case
+    when P.Des = 'Tg'
+      then (
+          select Name
+          from TgProv I
+          where I.ProvHash = P.Hash
+          )
+    else ''
+    end as ProvTg_Name
+  , case
+    when P.Des = 'Cg'
+      then (
+          select Id
+          from CgTlProv I
+          where I.ProvHash = P.Hash
+          )
+    else ''
+    end as ProvCgId
+  , case
+    when P.Des = 'Cg'
+      then (
+          select Dtm
+          from CgTlProv I
+          where I.ProvHash = P.Hash
+          )
+    else ''
+    end as ProvCgDtm
+  , case
+    when P.Des = 'Github'
+      then (
+          select GithubPathName
+          from GithubProv I
+          where I.ProvHash = P.Hash
+          )
+    else ''
+    end as ProvGithubPathName
+  , case
+    when P.Des = 'Github'
+      then (
+          select case
+              when CommitDtm = UnixTs_zero()
+                then ''
+              else CommitDtm
+              end
+          from GithubProv I
+          where I.ProvHash = P.Hash
+          )
+    else ''
+    end as ProvCommitDtm
